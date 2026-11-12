@@ -51,3 +51,22 @@ test('keeps a trashed directory intact and rejects duplicate Windows names', () 
   assert.equal(files.get('current').content, 'current');
   assert.equal(files.path('hidden'), 'D:\\交接\\记录\\shadow.txt');
 });
+
+test('persists user documents and excludes hidden or recycled branches from ordinary search', () => {
+  const files = createVfs(seed);
+  const journal = files.createFolder('archive', '日记');
+  const note = files.createFile(journal.id, 'Journal.txt');
+  files.write(note.id, '第一条记录');
+  assert.equal(files.search(' journal ')[0].id, note.id);
+  assert.throws(() => files.createFile(journal.id, 'journal.TXT'));
+  files.setHidden(journal.id, true);
+  assert.deepEqual(files.search('journal'), []);
+  assert.equal(files.search('journal', { showHidden: true })[0].content, '第一条记录');
+  files.remove(journal.id);
+  assert.deepEqual(files.search('journal', { showHidden: true }), []);
+
+  const resumed = createVfs(seed, files.serialize());
+  resumed.restore(journal.id);
+  assert.equal(resumed.get(note.id).content, '第一条记录');
+  assert.notEqual(resumed.createFile(journal.id, 'next.txt').id, note.id);
+});

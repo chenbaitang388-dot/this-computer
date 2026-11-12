@@ -15,6 +15,8 @@ let online;
 let shownHidden;
 let clipboard;
 let lastRestored;
+let muted = false;
+let restoring = false;
 const views = new Map();
 
 function readSave() {
@@ -29,7 +31,7 @@ function readSave() {
 function save() {
   try {
     localStorage.setItem(saveKey, JSON.stringify({
-      version: 1, files: vfs.serialize(), story: story.serialize(), online, shownHidden, lastRestored,
+      version: 1, files: vfs.serialize(), story: story.serialize(), online, shownHidden, lastRestored, muted,
     }));
     return true;
   } catch {
@@ -47,26 +49,45 @@ async function fullscreen() {
   }
 }
 
-function sound() {
-  if (!audio || audio.state !== 'running') return;
-  const tone = audio.createOscillator();
-  const level = audio.createGain();
-  tone.type = 'sine';
-  tone.frequency.setValueAtTime(480, audio.currentTime);
-  tone.frequency.setValueAtTime(370, audio.currentTime + .09);
-  level.gain.setValueAtTime(.035, audio.currentTime);
-  level.gain.exponentialRampToValueAtTime(.001, audio.currentTime + .22);
-  tone.connect(level).connect(audio.destination);
-  tone.start();
-  tone.stop(audio.currentTime + .23);
+function sound(kind = 'warning') {
+  if (muted || !audio || audio.state !== 'running') return;
+  const cues = {
+    boot: [392, 523, 659, 784], warning: [523, 392], notify: [660, 880],
+    restore: [440, 660], success: [523, 659, 784], refresh: [360], open: [550],
+    menu: [410], close: [280], minimize: [320],
+  };
+  const notes = cues[kind];
+  if (!notes) return;
+  const subtle = notes.length === 1;
+  for (const [index, frequency] of notes.entries()) {
+    const start = audio.currentTime + index * .11;
+    const tone = audio.createOscillator();
+    const level = audio.createGain();
+    tone.frequency.value = frequency;
+    level.gain.setValueAtTime(.001, start);
+    level.gain.exponentialRampToValueAtTime(subtle ? .012 : .045, start + .016);
+    level.gain.exponentialRampToValueAtTime(.001, start + (subtle ? .065 : .18));
+    tone.connect(level).connect(audio.destination);
+    tone.start(start);
+    tone.stop(start + .19);
+  }
 }
 
 function react(event) {
+  const oldCount = story.inbox().length;
   const message = story.dispatch(event);
   save();
   updateProgress();
+  refresh(['messenger', 'manager']);
+  if (story.inbox().length > oldCount) {
+    desktop.notify('本机消息 · 收到一条新消息', () => desktop.open('messenger'));
+  }
   if (message?.title && message?.text) {
-    sound();
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      root.animate([
+        { filter: 'brightness(1)' }, { filter: 'brightness(.84) saturate(.75)' }, { filter: 'brightness(1)' },
+      ], { duration: 320 });
+    }
     desktop.dialog(message);
   }
 }
@@ -116,7 +137,10 @@ function properties(id) {
     '创建时间  ' + (file.created || '—'),
     '修改时间  ' + (file.modified || '—'),
     '属性  ' + (file.hidden ? '隐藏' : '普通'),
-  ].join('\n'));
+  ].join('\n'), file.parent == null || file.trash ? undefined : [
+    { label: file.hidden ? '取消隐藏' : '设为隐藏', action: () => operate(() => vfs.setHidden(id, !file.hidden)) },
+    { label: '确定' },
+  ]);
 }
 
 let menu;
@@ -209,18 +233,44 @@ function explorer(payload, host) {
     button(shownHidden ? '隐藏隐藏项目' : '显示隐藏项目', toggle),
   );
   if (folder) toolbar.append(button('粘贴', () => paste(id)));
-  host.append(toolbar, element('div', folder ? vfs.path(id) : '此电脑', 'game-path'));
+  toolbar.append(button('搜索', () => desktop.open('search', { folder: id })));
+  const address = element('form', null, 'game-address');
+  const addressLabel = element('label', '地址 ');
+  const location = element('input');
+  location.value = folder ? vfs.path(id) : '此电脑';
+  addressLabel.append(location);
+  const go = element('button', '转到');
+  address.append(addressLabel, go);
+  address.onsubmit = event => {
+    event.preventDefault();
+    if (!openPath(location.value)) alert('地址栏', '找不到此地址。');
+  };
+  host.classList.add('game-explorer');
+  host.append(toolbar, address);
+  const layout = element('div', null, 'game-explorer-layout');
+  const sidebar = element('aside', null, 'game-sidebar');
+  sidebar.append(element('h2', '其他位置'),
+    button('此电脑', () => desktop.open('explorer', { id: null })),
+    button('网上邻居', () => desktop.open('network')),
+    button('回收站', () => desktop.open('trash')),
+    element('h2', '文件和文件夹任务'));
+  if (folder) sidebar.append(button('新建文件夹', () => createEntry(host, id, 'dir')));
+  sidebar.append(button('搜索文件', () => desktop.open('search', { folder: id })));
+  const listings = element('div', null, 'game-listings');
+  layout.append(sidebar, listings);
+  host.append(layout);
   host.addEventListener('contextmenu', event => {
     const actions = [['刷新', () => refresh(['explorer'])], [shownHidden ? '隐藏隐藏项目' : '显示隐藏项目', toggle]];
+    if (folder) actions.push(['新建文件夹', () => createEntry(host, id, 'dir')], ['新建文本文档', () => createEntry(host, id, 'file')]);
     if (folder && clipboard) actions.push(['粘贴', () => paste(id)]);
     context(event, actions);
   });
-  const rows = table(host, ['名称', '类型', '修改时间']);
+  const rows = table(listings, ['名称', '类型', '修改时间']);
   let files;
   try {
     files = id ? vfs.list(id, { showHidden: shownHidden }) : ['c', 'd'].map(vfs.get).filter(Boolean);
   } catch (error) {
-    host.append(element('p', error.message));
+    listings.append(element('p', error.message));
     return;
   }
   for (const file of files) {
@@ -230,6 +280,7 @@ function explorer(payload, host) {
       if (event.detail === 0) openFile(file.id);
     });
     name.className = 'game-name';
+    name.dataset.kind = file.parent == null ? 'drive' : file.kind;
     row.insertCell().append(name);
     row.insertCell().textContent = file.parent === null ? '本地磁盘' : file.kind === 'dir' ? '文件夹' : '文档';
     row.insertCell().textContent = file.modified || '—';
@@ -238,9 +289,39 @@ function explorer(payload, host) {
     row.addEventListener('keydown', event => {
       if (event.key === 'Delete' && file.parent) operate(() => vfs.remove(file.id));
       if (event.key === 'F2' && file.parent) renameFile(file);
+      if (event.ctrlKey && file.parent && ['c', 'x'].includes(event.key.toLowerCase())) {
+        event.preventDefault();
+        clipboard = { id: file.id, method: event.key.toLowerCase() === 'c' ? 'copy' : 'move' };
+      }
+      if (event.ctrlKey && id && event.key.toLowerCase() === 'v') {
+        event.preventDefault();
+        paste(id);
+      }
     });
   }
-  if (!files.length) host.append(element('p', '此文件夹为空。'));
+  if (!files.length) listings.append(element('p', '此文件夹为空。'));
+  host.append(element('footer', files.length + ' 个对象', 'game-statusbar'));
+}
+
+function createEntry(host, parent, kind) {
+  host.querySelector('.game-create')?.remove();
+  const form = element('form', null, 'game-create game-toolbar');
+  const label = element('label', kind === 'dir' ? '文件夹名称 ' : '文件名 ');
+  const input = element('input');
+  input.required = true;
+  input.value = kind === 'dir' ? '新建文件夹' : '新建文本文档.txt';
+  label.append(input);
+  form.append(label, element('button', '创建'), button('取消', () => form.remove()));
+  form.onsubmit = event => {
+    event.preventDefault();
+    operate(() => {
+      vfs[kind === 'dir' ? 'createFolder' : 'createFile'](parent, input.value);
+      sound('restore');
+    });
+  };
+  host.prepend(form);
+  input.focus();
+  input.select();
 }
 
 function trash(host) {
@@ -250,11 +331,22 @@ function trash(host) {
     const row = rows.insertRow();
     row.insertCell().textContent = file.name;
     row.insertCell().textContent = vfs.path(file.parent);
-    const restore = () => operate(() => {
-      vfs.restore(file.id);
-      lastRestored = file.id;
-      react({ type: 'restore', id: file.id });
-    });
+    const restore = () => {
+      if (restoring) return;
+      restoring = true;
+      const progress = element('progress');
+      progress.setAttribute('aria-label', '正在还原文件');
+      host.append(element('p', '正在还原 1 个项目…'), progress);
+      setTimeout(() => {
+        restoring = false;
+        operate(() => {
+          vfs.restore(file.id);
+          lastRestored = file.id;
+          sound('restore');
+          react({ type: 'restore', id: file.id });
+        });
+      }, 500);
+    };
     const restoreButton = button('还原', restore);
     restoreButton.dataset.restoreId = file.id;
     row.insertCell().append(restoreButton);
@@ -276,11 +368,27 @@ function trash(host) {
 function notepad(payload, host) {
   const file = vfs.get(payload?.id);
   const note = element('textarea', null, 'game-note');
-  note.readOnly = true;
+  const isOriginal = file && seed.some(entry => entry.id === file.id);
+  note.readOnly = Boolean(isOriginal);
   note.spellcheck = false;
   note.setAttribute('aria-label', file?.name || '记事本正文');
   note.value = String(file?.content ?? '');
-  host.append(element('div', file ? vfs.path(file.id) : '无标题', 'game-path'), note);
+  const toolbar = element('div', null, 'game-toolbar');
+  const saveText = () => operate(() => {
+    const saved = file ? vfs.write(file.id, note.value) : createUniqueNote('新建便笺', note.value);
+    desktop.notify('已保存 ' + saved.name);
+    if (!file) desktop.open('notepad', { id: saved.id, title: saved.name + ' — 记事本' });
+  });
+  const saveNote = button('保存', saveText);
+  saveNote.disabled = Boolean(isOriginal);
+  toolbar.append(saveNote, button('全选', () => { note.focus(); note.select(); }));
+  note.onkeydown = event => {
+    if (event.ctrlKey && event.key.toLowerCase() === 's') {
+      event.preventDefault();
+      if (!isOriginal) saveText();
+    }
+  };
+  host.append(toolbar, element('div', file ? vfs.path(file.id) : '无标题', 'game-path'), note);
 }
 
 function eventViewer(host) {
@@ -313,7 +421,7 @@ function network(host) {
 
 function handover(host) {
   const status = story.status();
-  host.append(element('h2', '撤场交接 · 工作站 04'));
+  host.append(element('h2', '撤场交接 · 工作站 03'));
   if (status.complete) {
     const result = element('p', '第一份证据已提交。交接记录已封存。序章结束。', 'game-success');
     result.id = 'evidence-result';
@@ -327,10 +435,10 @@ function handover(host) {
     ['current', '查阅当前交接记录'],
     ['old', '还原并阅读交接记录旧版'],
     ['record', '查看旧版指向的系统事件'],
-    ['offline', '断开本地连接，验证警告来源'],
+    ['offline', '断网复现，或在任务管理器中做进程对照'],
   ];
   for (const [key, label] of evidence) {
-    const entry = element('li', (status[key] ? '✓ ' : '○ ') + label);
+    const entry = element('li', (status[key] || (key === 'offline' && status.controlled) ? '✓ ' : '○ ') + label);
     entry.dataset.evidenceKey = key;
     entry.dataset.label = label;
     progress.append(entry);
@@ -368,8 +476,9 @@ function handover(host) {
     const response = story.submit({ record: record.value.trim(), conclusion: conclusion.value });
     if (response.ok) {
       save();
-      refresh(['handover']);
-      sound();
+      refresh(['handover', 'messenger', 'manager']);
+      desktop.notify('本机消息 · 交接回执已收到', () => desktop.open('messenger'));
+      sound('success');
     } else {
       result.textContent = response.text;
     }
@@ -380,12 +489,190 @@ function handover(host) {
 function updateProgress() {
   const status = story.status();
   for (const entry of root.querySelectorAll('[data-evidence-key]')) {
-    entry.textContent = (status[entry.dataset.evidenceKey] ? '✓ ' : '○ ') + entry.dataset.label;
+    const key = entry.dataset.evidenceKey;
+    entry.textContent = (status[key] || (key === 'offline' && status.controlled) ? '✓ ' : '○ ') + entry.dataset.label;
   }
 }
 
+function openPath(value) {
+  const path = value.trim();
+  if (path === '此电脑') {
+    desktop.open('explorer', { id: null });
+    return true;
+  }
+  const [drive, ...parts] = path.split(/[\\/]+/u);
+  if (!/^[cd]:$/iu.test(drive)) return false;
+  let file = vfs.get(drive[0].toLowerCase());
+  for (const name of parts.filter(Boolean)) {
+    if (file?.kind !== 'dir') return false;
+    try {
+      file = vfs.list(file.id, { showHidden: true })
+        .find(entry => entry.name.toLowerCase() === name.toLowerCase());
+    } catch {
+      return false;
+    }
+  }
+  if (!file) return false;
+  openFile(file.id);
+  return true;
+}
+
+function search(payload, host) {
+  const form = element('form', null, 'game-toolbar');
+  const label = element('label', '文件名或部分名称 ');
+  const query = element('input');
+  query.id = 'file-search';
+  const submit = element('button', '搜索');
+  label.append(query);
+  form.append(label, submit);
+  const summary = element('p', payload?.folder ? '搜索位置：' + vfs.path(payload.folder) : '搜索位置：本机磁盘');
+  summary.setAttribute('role', 'status');
+  host.append(form, summary);
+  const rows = table(host, ['名称', '所在位置']);
+  form.onsubmit = event => {
+    event.preventDefault();
+    rows.replaceChildren();
+    const folderPath = payload?.folder && vfs.path(payload.folder).replace(/\\$/u, '');
+    const files = vfs.search(query.value.trim(), { showHidden: shownHidden }).filter(file =>
+      !folderPath || vfs.path(file.id).startsWith(folderPath + '\\'));
+    summary.textContent = files.length + ' 个搜索结果';
+    for (const file of files) {
+      const row = rows.insertRow();
+      const open = button(file.name, () => openFile(file.id));
+      open.className = 'game-name';
+      open.dataset.searchId = file.id;
+      row.insertCell().append(open);
+      row.insertCell().textContent = vfs.path(file.parent);
+    }
+  };
+}
+
+function run(_, host) {
+  host.append(element('p', '键入程序名称或本机文件夹路径。'));
+  const form = element('form', null, 'game-toolbar');
+  const label = element('label', '打开 ');
+  const input = element('input');
+  input.id = 'run-command';
+  const submit = element('button', '确定');
+  submit.id = 'run-submit';
+  label.append(input);
+  form.append(label, submit);
+  form.onsubmit = event => {
+    event.preventDefault();
+    const commands = new Map([
+      ['eventvwr', 'events'], ['taskmgr', 'manager'], ['notepad', 'notepad'],
+      ['control', 'control'], ['explorer', 'explorer'], ['msmsgs', 'messenger'],
+    ]);
+    const app = commands.get(input.value.trim().toLowerCase().replace(/\.(?:exe|msc)$/u, ''));
+    if (app) {
+      desktop.open(app, app === 'explorer' ? { id: null } : undefined);
+      desktop.closeWindow('run');
+    } else if (openPath(input.value)) {
+      desktop.closeWindow('run');
+    } else {
+      alert('运行', '找不到指定的程序或路径。');
+    }
+  };
+  host.append(form, element('p', '可用命令：eventvwr、taskmgr、notepad、control、explorer、msmsgs'));
+}
+
+function messenger(_, host) {
+  host.classList.add('game-messenger');
+  const transcript = element('div', null, 'game-transcript');
+  transcript.id = 'messenger-log';
+  transcript.setAttribute('role', 'log');
+  for (const { from, text } of story.inbox()) {
+    const message = element('p');
+    message.append(element('strong', from + '　'), document.createTextNode(text));
+    transcript.append(message);
+  }
+  const serviceOnline = story.status().serviceRunning !== false;
+  host.append(element('div', '桌面恢复 · ' + (serviceOnline ? '在线' : '进程已停止'), 'game-contact'), transcript);
+  transcript.scrollTop = transcript.scrollHeight;
+  const topics = element('div', null, 'game-toolbar game-topics');
+  for (const { id, label } of story.topics()) {
+    const reply = button(label, () => {
+      const response = story.talk(id);
+      if (response.effect === 'write-draft') {
+        writeSystemFile('未发送的回复', '收到一份注销请求。\n\n我把你的“离开”写进了待发送列表。\n在确认回来以前，我不能把这个词删掉。\n\n收件人：上一个会话\n发送状态：等待本机应答');
+      } else if (response.effect === 'write-revision') {
+        writeSystemFile('交接签名校验', '签名来源：D:\\交接\\值班交接（旧版）.txt\n写入进程：DeskRestore.exe\n\n01:52:06 收到沈砚的注销请求\n01:52:08 未检测到键盘或鼠标输入，桌面可见，计作应答\n02:14:00 沿用上一班的沈砚签名，替换交接正文\n\n如果桌面在我不运行的时候也能打开，请告诉我。');
+      }
+      save();
+      refresh(['messenger', 'manager']);
+      sound('notify');
+    });
+    reply.dataset.topicId = id;
+    reply.disabled = !serviceOnline;
+    topics.append(reply);
+  }
+  host.append(topics);
+}
+
+function createUniqueNote(base, content) {
+  const names = new Set(vfs.list('d', { showHidden: true }).map(file => file.name.toLowerCase()));
+  let name = base + '.txt';
+  for (let suffix = 2; names.has(name.toLowerCase()); suffix += 1) name = base + ' (' + suffix + ').txt';
+  return vfs.createFile('d', name, content);
+}
+
+function writeSystemFile(name, content) {
+  const file = createUniqueNote(name, content);
+  refresh(['explorer']);
+  desktop.notify('D 盘 · ' + file.name, () => openFile(file.id));
+}
+
+function manager(_, host) {
+  const status = story.status();
+  const running = status.serviceRunning !== false;
+  host.append(element('h2', '进程'));
+  const rows = table(host, ['映像名称', '用户名', '状态']);
+  const row = rows.insertRow();
+  row.insertCell().textContent = 'DeskRestore.exe';
+  row.insertCell().textContent = 'SYSTEM';
+  row.insertCell().textContent = running ? '正在运行' : '已停止';
+  host.append(button(running ? '停止进程' : '启动进程', () => {
+    react({ type: 'service-toggle', running: !running });
+  }, 'service-toggle'));
+  host.append(element('p', '进程实验记录'));
+  const trace = element('pre', story.trace().join('\n') || '等待操作。', 'game-receipt');
+  host.append(trace, element('h2', '应用程序'));
+  const windows = table(host, ['任务', '操作']);
+  for (const task of desktop.listWindows()) {
+    if (task.id === 'manager') continue;
+    const row = windows.insertRow();
+    row.insertCell().textContent = task.title;
+    row.insertCell().append(button('结束任务', () => {
+      desktop.closeWindow(task.id);
+      refresh(['manager']);
+    }));
+  }
+}
+
+function control(_, host) {
+  host.append(element('h2', '控制面板'));
+  const options = element('div', null, 'game-control');
+  options.append(
+    button('显示属性', () => desktop.open('display')),
+    button('网络连接', () => desktop.open('network')),
+    button('任务管理器', () => desktop.open('manager')),
+    button(muted ? '打开系统声音' : '静音', () => {
+      muted = !muted;
+      save();
+      refresh(['control']);
+      sound('notify');
+    }),
+    button(shownHidden ? '隐藏文件和文件夹' : '显示隐藏文件和文件夹', () => {
+      shownHidden = !shownHidden;
+      save();
+      refresh(['control', 'explorer']);
+    }),
+  );
+  host.append(options);
+}
+
 const apps = {
-  explorer, notepad,
+  explorer, notepad, search, run, messenger, manager, control,
   trash: (_, host) => trash(host),
   events: (_, host) => eventViewer(host),
   network: (_, host) => network(host),
@@ -437,19 +724,29 @@ boot.addEventListener('click', () => {
     if (audio?.state === 'suspended') void audio.resume().catch(() => {});
     if (!desktop) {
       const saved = readSave();
-      vfs = createVfs(seed, saved?.files);
+      const originalContent = new Map(seed.filter(file => file.kind === 'file').map(file => [file.id, file.content]));
+      const savedFiles = saved?.files?.map(file => originalContent.has(file.id)
+        ? { ...file, content: originalContent.get(file.id) }
+        : file);
+      vfs = createVfs(seed, savedFiles);
       story = createStory(saved?.story);
       online = saved?.online ?? true;
       shownHidden = saved?.shownHidden ?? false;
       lastRestored = saved?.lastRestored;
+      muted = saved?.muted ?? false;
       root.hidden = false;
       desktop = mountDesktop(root, {
         renderApp: render,
         onOpen: () => {},
         onPower: power,
         onFullscreen: fullscreen,
+        onFeedback: sound,
       });
       save();
+      if (!saved) {
+        desktop.notify('本机消息 · 工作站 03', () => desktop.open('messenger'));
+        void audio?.resume().then(() => sound('boot')).catch(() => {});
+      }
     }
     root.hidden = false;
     startup.hidden = true;

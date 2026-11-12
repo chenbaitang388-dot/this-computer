@@ -1,8 +1,18 @@
 const invalidName = /[<>:"/\\|?*\u0000-\u001F]/u;
-const reservedName = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/iu;
+const reservedName = /^(CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³]) *(?:\.|$)/iu;
 
 function compareName(name) {
   return name.toLowerCase();
+}
+
+function checkName(name) {
+  if (typeof name !== 'string' || !name.trim() || name.length > 255 || invalidName.test(name) || /[. ]$/u.test(name) || reservedName.test(name)) {
+    throw new Error('请输入有效的文件名。');
+  }
+}
+
+function checkContent(content) {
+  if (typeof content !== 'string') throw new Error('文件内容必须是文本。');
 }
 
 export function createVfs(seed, saved) {
@@ -95,6 +105,22 @@ export function createVfs(seed, saved) {
     return `copy-${copyNumber}`;
   }
 
+  let fileNumber = 0;
+  function createNode(parent, name, fields) {
+    directory(parent);
+    checkName(name);
+    if (occupied(parent, name)) throw new Error('此位置已有同名项目。');
+    let id;
+    do {
+      fileNumber += 1;
+      id = `user-file-${fileNumber}`;
+    } while (nodes.has(id));
+    const now = new Date().toISOString();
+    const node = { id, parent, name, created: now, modified: now, ...fields };
+    nodes.set(id, node);
+    return structuredClone(node);
+  }
+
   return {
     list(parent, { showHidden = false } = {}) {
       if (parent != null) directory(parent);
@@ -136,12 +162,45 @@ export function createVfs(seed, saved) {
 
     rename(id, name) {
       const node = editable(id);
-      if (typeof name !== 'string' || !name.trim() || name.length > 255 || invalidName.test(name) || /[. ]$/u.test(name) || reservedName.test(name)) {
-        throw new Error('请输入有效的文件名。');
-      }
+      checkName(name);
       if (occupied(node.parent, name, id)) throw new Error('此位置已有同名项目。');
       node.name = name;
       return structuredClone(node);
+    },
+
+    createFile(parent, name, content = '') {
+      checkContent(content);
+      return createNode(parent, name, { kind: 'file', content });
+    },
+
+    createFolder(parent, name) {
+      return createNode(parent, name, { kind: 'dir' });
+    },
+
+    write(id, content) {
+      const node = editable(id);
+      if (node.kind !== 'file') throw new Error('请选择一个文件。');
+      checkContent(content);
+      node.content = content;
+      node.modified = new Date().toISOString();
+      return structuredClone(node);
+    },
+
+    setHidden(id, hidden) {
+      const node = editable(id);
+      if (typeof hidden !== 'boolean') throw new Error('请选择是否隐藏此项目。');
+      node.hidden = hidden;
+      return structuredClone(node);
+    },
+
+    search(query, { showHidden = false } = {}) {
+      const needle = compareName(query.trim());
+      if (!needle) return [];
+      const results = [...nodes.values()].filter((node) => {
+        if (node.parent == null || !compareName(node.name).includes(needle)) return false;
+        return !lineage(node).some((entry) => entry.trash || (!showHidden && entry.hidden));
+      });
+      return structuredClone(results);
     },
 
     move(id, parent) {

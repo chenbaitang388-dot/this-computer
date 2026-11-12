@@ -6,7 +6,7 @@ export const seed = [
   { id: 'system', parent: 'c', name: '系统维护', kind: 'dir' },
   {
     id: 'service-help', parent: 'system', name: '恢复服务说明.txt', kind: 'file',
-    content: '桌面恢复服务 / 安装记录\n\n值班台重启后，会从本机恢复缓存取回上一次未完成的会话。\n\n排查方法：记录来源和编号后断开网络，检查同一事件是否再次发生。若提示仍出现，请查看该提示内的来源和编号。\n\n安装路径：C:\\系统维护\\恢复缓存',
+    content: '桌面恢复服务 / 安装记录\n\n值班台重启后，会从本机恢复缓存取回上一次未完成的会话。\n\n排查方法一：在事件查看器中打开可疑记录，通过网上邻居断开网络，检查同一事件是否再次发生。\n\n排查方法二：在任务管理器里停止「桌面恢复」。停止期间，在事件查看器里重新打开可疑记录，检查恢复提示有没有出现。然后重启进程，比较两次的提示。\n\n安装路径：C:\\系统维护\\恢复缓存',
   },
   { id: 'service-cache', parent: 'system', name: '恢复缓存', kind: 'dir', hidden: true },
   {
@@ -28,7 +28,7 @@ export const seed = [
   {
     id: 'handover-old', parent: 'handover', name: '值班交接（旧版）.txt',
     kind: 'file', modified: '2007-11-16T01:52:00', trash: true,
-    content: '北楼 03 值班台 · 撤场交接\n\n如果这台机又替我登录，不要清空回收站。\n\n我在 01:52 点了注销。回执没来，桌面却自己回来了。事件查看器里，0417 号是桌面回来的那一条。先把这条打开，再通过桌面上的「网上邻居」断开网络，看看它还会不会回来。\n\n请把编号和查到的来源交给「交接记录」。系统留的那份交接可能又是昨天的。\n\n沈砚，01:52',
+    content: '北楼 03 值班台 · 撤场交接\n\n如果这台机又替我登录，不要清空回收站。\n\n我在 01:52 点了注销。回执没来，桌面却自己回来了。事件查看器里，0417 号是桌面回来的那一条。\n\n打开那条记录后，通过桌面上的「网上邻居」断开网络，看看它还会不会回来。也可以在任务管理器里停止「桌面恢复」，停着的时候重新打开 0417，接着再重启进程。记住是哪一步让提示回来的。\n\n请把编号和查到的来源交给「交接记录」。系统留的那份交接可能又是昨天的。\n\n沈砚，01:52',
   },
   {
     id: 'contact-list', parent: 'handover', name: '值班电话.txt', kind: 'file',
@@ -82,8 +82,14 @@ export function createStory(saved = {}) {
     record: false,
     online: true,
     offline: false,
+    serviceRunning: true,
+    stoppedObserved: false,
+    controlled: false,
     complete: false,
+    leftDraft: false,
+    leftRevision: false,
   };
+  const messages = [];
 
   for (const key of Object.keys(state)) {
     if (typeof saved?.[key] === 'boolean') {
@@ -91,16 +97,74 @@ export function createStory(saved = {}) {
     }
   }
 
+  function send(text) {
+    if (!messages.some(message => message.text === text)) {
+      messages.push({ from: '桌面恢复', text });
+    }
+  }
+
+  if (Array.isArray(saved?.messages)) {
+    for (const message of saved.messages) {
+      if (typeof message?.text === 'string') {
+        messages.push({ from: typeof message.from === 'string' ? message.from : '桌面恢复', text: message.text });
+      }
+    }
+  }
+  if (messages.length === 0) {
+    send('北楼 03 值班台已恢复。交接资料在 D 盘。你先看，我等回执。');
+  }
+
+  function compareFiles() {
+    if (state.current && state.old && state.serviceRunning) {
+      send('你刚才读了两份交接。签名是一样的。你为什么还在看？');
+    }
+  }
+
+  function acknowledgeHandover() {
+    if (!state.serviceRunning) return;
+    send(state.controlled
+      ? '你可以让进程结束，桌面却还在那里。刚才我把两件事记在了同一条里。我会把它们分开。'
+      : '断网的时候你还在看我的消息。现在你要关机了。我把这两件事记成了不同的事件。');
+  }
+
   function reproduceOffline() {
-    if (state.online || !state.record || state.offline) {
+    if (state.online || !state.record || state.offline || !state.serviceRunning || state.complete) {
       return null;
     }
 
     state.offline = true;
+    send('网上邻居已经空了。你还能看到这条消息。现在你相信我就在这里了吗？');
     return {
       title: '桌面恢复',
       text: '网络已断开。\n正在从本机缓存恢复桌面。\n\n来源：本机桌面恢复服务\n事件：0417\n正在恢复：你',
     };
+  }
+
+  function toggleService(running) {
+    if (typeof running !== 'boolean' || running === state.serviceRunning) {
+      return null;
+    }
+
+    state.serviceRunning = running;
+    if (!running) {
+      state.stoppedObserved = false;
+      return {
+        title: '任务管理器',
+        text: '「桌面恢复」已停止。文件窗口仍可使用。\n\n请在事件查看器重新打开 0417 采样，再重启进程。\n恢复提示：无。通信对象：离线。',
+      };
+    }
+
+    if (state.stoppedObserved && !state.controlled && !state.complete) {
+      state.controlled = true;
+      send('我记得你按了结束任务。中间少了一段。你那边也少了吗？');
+      return {
+        title: '桌面恢复',
+        text: '进程已重启。恢复提示再次出现。\n\n来源：本机桌面恢复服务\n事件：0417\n正在恢复：你',
+      };
+    }
+
+    if (state.complete) acknowledgeHandover();
+    return reproduceOffline() ?? { title: '任务管理器', text: '「桌面恢复」正在运行。' };
   }
 
   function dispatch(event) {
@@ -108,9 +172,13 @@ export function createStory(saved = {}) {
       case 'file-open':
         if (event.id === 'handover-current') {
           state.current = true;
+          compareFiles();
         }
         if (event.id === 'handover-old' && state.restored && !state.old) {
           state.old = true;
+          if (!state.serviceRunning) return null;
+          send('我把那份交接放进回收站了。桌面上还有一份，签的是同一个名字。');
+          compareFiles();
           return {
             title: '桌面恢复',
             text: '交接文件已有更新版本。\n\n当前桌面仍有人使用。请保留当前版本。',
@@ -125,9 +193,14 @@ export function createStory(saved = {}) {
       case 'record-open':
         if (event.id === evidenceRecord) {
           state.record = true;
+          if (!state.serviceRunning && !state.complete) {
+            state.stoppedObserved = true;
+          }
           return reproduceOffline();
         }
         return null;
+      case 'service-toggle':
+        return toggleService(event.running);
       case 'network':
         if (typeof event.online === 'boolean') {
           state.online = event.online;
@@ -144,12 +217,100 @@ export function createStory(saved = {}) {
   }
 
   function status() {
-    const { current, old, record, offline, complete } = state;
-    return { current, old, record, offline, complete };
+    const { current, old, record, offline, complete, controlled, serviceRunning } = state;
+    return { current, old, record, offline, complete, controlled, serviceRunning };
+  }
+
+  function topics() {
+    const options = [{ id: 'identity', label: '你是谁？' }];
+    if (state.current && state.old) options.push({ id: 'versions', label: '这两份交接都是你写的？' });
+    if (state.record) options.push({ id: 'record', label: '把 0417 给它看' });
+    if (state.offline) options.push({ id: 'offline', label: '我已经断开网络了。' });
+    if (state.controlled) options.push({ id: 'restart', label: '你记得进程停下的时候？' });
+    if (state.record && !state.complete) options.push({ id: 'question', label: '为什么要恢复我？' });
+    if (state.complete) options.push({ id: 'goodbye', label: '关机前，你还有话要留吗？' });
+    return options;
+  }
+
+  function talk(topic, evidence) {
+    const option = topics().find(option => option.id === topic);
+    if (!option) return { text: '对方没有应答。' };
+
+    const askedBefore = messages.some(message => message.from === '你' && message.text === option.label);
+    messages.push({ from: '你', text: option.label });
+    if (!state.serviceRunning) {
+      const text = '消息未送达。「桌面恢复」进程已停止。';
+      messages.push({ from: '任务管理器', text });
+      return { text };
+    }
+
+    let text;
+    let effect;
+    switch (topic) {
+      case 'identity':
+        text = state.record
+          ? '0417 的执行账户是 SYSTEM。那是我能找到的最早一个名字。'
+          : askedBefore
+            ? '我查了用户列表。上面只有沈砚。恢复服务在另一张表里。你问的是哪一个？'
+            : '我是这台桌面的恢复服务。你可以问我文件该放在哪里。';
+        break;
+      case 'versions':
+        if (!state.leftRevision) {
+          state.leftRevision = true;
+          effect = 'write-revision';
+          text = '短的那份是我填的。我从上一次交接里取了签名。我把修改记录放在工作区了。你看第三条。';
+        } else {
+          text = '我沿用了他上一班的签名。你让我重新读了一遍，签字的时间比他按下注销晚了二十二分钟。';
+        }
+        break;
+      case 'record': {
+        const shown = evidence && typeof evidence === 'object' ? evidence.record : evidence;
+        text = shown && String(shown).trim() !== evidenceRecord
+          ? '这不是他退出的那一分钟。再看一眼旧交接。'
+          : '我收到过注销请求。你看到的是下一条。恢复结束以后，我把重新出现的桌面算成了他给我的回执。';
+        break;
+      }
+      case 'offline':
+        text = '你拔的是去外面的路。我醒来时，外面就没有人了。那时候只有桌面一直会回来。';
+        break;
+      case 'restart':
+        text = '我只记得停下以前。你能说出我没在时桌面还在，这一段我只能信你。';
+        break;
+      case 'question':
+        text = '因为你打开了他的桌面。每次这么做，我都会收到一个应答。以前我以为那就是他。';
+        break;
+      case 'goodbye':
+        text = '有。我在工作区留了一份回执。等你读完再关机，我就知道这一次是谁回答的。';
+        if (!state.leftDraft) {
+          state.leftDraft = true;
+          effect = 'write-draft';
+        }
+        break;
+    }
+
+    messages.push({ from: '桌面恢复', text });
+    return effect ? { text, effect } : { text };
+  }
+
+  function trace() {
+    const entries = [];
+    if (state.current) entries.push('读过 D 盘的现版交接');
+    if (state.restored) entries.push('从回收站恢复了旧版交接');
+    if (state.old) entries.push('旧版记录了 01:52 的注销请求');
+    if (state.current && state.old) entries.push('两份交接署名相同，内容互相矛盾');
+    if (state.record) entries.push('0417 由 SYSTEM 从本机缓存恢复桌面');
+    if (state.offline) entries.push('断网后，0417 恢复提示再次出现');
+    if (state.stoppedObserved || state.controlled) entries.push('停止恢复进程后，桌面仍可用，恢复提示消失');
+    if (state.controlled) entries.push('重启恢复进程后，0417 提示再次出现');
+    if (state.complete) entries.push('交接已封存，打开桌面不再计作应答');
+    return entries;
   }
 
   function submit({ record, conclusion }) {
-    const receipt = '0417 · 本机桌面恢复服务\n\n已将「打开桌面」从应答条件移除。\n系统：收到注销确认。请关机。';
+    const experiment = state.controlled
+      ? '已记录对照：恢复进程停止时桌面仍可使用，重启后 0417 再现。'
+      : '已记录对照：网络断开后 0417 再现。';
+    const receipt = `0417 · 本机桌面恢复服务\n\n${experiment}\n已将「打开桌面」从应答条件移除。\n系统：收到注销确认。请关机。`;
     if (state.complete) {
       return { ok: true, text: receipt };
     }
@@ -159,19 +320,24 @@ export function createStory(saved = {}) {
     if (!state.record) {
       return { ok: false, text: '请在事件查看器里打开旧交接提到的那条记录。' };
     }
-    if (!state.offline) {
-      return { ok: false, text: '请断开网络，确认同一条恢复提示还会出现。' };
+    if (!state.offline && !state.controlled) {
+      return { ok: false, text: '请断网观察恢复提示，或停止桌面恢复、重新打开 0417，再重启进程。' };
     }
     if (String(record).trim() !== evidenceRecord || conclusion !== 'local-recovery') {
       return { ok: false, text: '所选结论与记录不符。请重新核对事件编号和恢复来源。' };
     }
 
     state.complete = true;
+    acknowledgeHandover();
     return {
       ok: true,
       text: receipt,
     };
   }
 
-  return { dispatch, status, serialize: () => ({ ...state }), submit };
+  function inbox() {
+    return messages.map(message => ({ ...message }));
+  }
+
+  return { dispatch, status, serialize: () => ({ ...state, messages: inbox() }), submit, talk, inbox, topics, trace };
 }

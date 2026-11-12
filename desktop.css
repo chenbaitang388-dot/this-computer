@@ -18,22 +18,28 @@
   position: absolute;
   inset: 0 0 var(--retro-taskbar);
   overflow: hidden;
-  background:
-    radial-gradient(ellipse at 78% 108%, #668e47 0 24%, transparent 24.3%),
-    radial-gradient(ellipse at 33% 136%, #587c3e 0 49%, transparent 49.2%),
-    radial-gradient(ellipse at 53% 162%, #324e3c 0 63%, transparent 63.2%),
-    radial-gradient(ellipse at 65% 28%, #accbe2 0, transparent 53%),
-    linear-gradient(160deg, #3f72aa 0%, #6897c0 44%, #a2bed1 73%, #9db9be 100%);
+  background: #3a6ea5 url("./assets/hills.jpg") center / cover no-repeat;
 }
-.retro-shortcuts { position: absolute; inset: 13px auto 9px 11px; display: flex; flex-flow: column wrap; align-content: flex-start; gap: 6px; }
+.retro-display-preview {
+  min-height: 125px;
+  border: 7px solid #b3bbc7;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px #85909f, inset 0 0 0 1px #4e627a;
+  background: #3a6ea5 url("./assets/hills.jpg") center / cover no-repeat;
+}
+.retro-surface.wallpaper-centered { background-size: auto; }
+.retro-display-preview.wallpaper-centered { background-size: 73% auto; }
+.retro-surface[data-wallpaper="plain"], .retro-display-preview[data-wallpaper="plain"] { background: #3a6ea5; }
+.retro-surface[data-wallpaper="night"], .retro-display-preview[data-wallpaper="night"] { background-color: #0c1624; background-image: linear-gradient(#09111c94, #050b10ce), url("./assets/hills.jpg"); }
+.retro-shortcuts { position: absolute; inset: 11px auto 9px 8px; display: flex; flex-flow: column wrap; align-content: flex-start; gap: 4px; }
 .retro-shortcut {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
   width: 78px;
-  min-height: 62px;
-  padding: 4px 1px;
+  min-height: 61px;
+  padding: 3px 1px;
   border: 1px solid transparent;
   color: white;
   background: transparent;
@@ -44,7 +50,10 @@
 .retro-shortcut svg { width: 36px; height: 36px; filter: drop-shadow(1px 2px 2px #2435478a); }
 .retro-shortcut span { padding: 1px 4px; line-height: 17px; }
 .retro-shortcut.is-selected span, .retro-shortcut:focus-visible span { background: #0a55a7; }
+.retro-shortcut.is-selected svg { filter: brightness(.8) sepia(.22) saturate(1.5) hue-rotate(155deg); }
 .retro-shortcut:focus-visible { outline: 1px dotted #fff; }
+.retro-shortcuts.uses-small-icons .retro-shortcut { min-height: 45px; }
+.retro-shortcuts.uses-small-icons .retro-shortcut svg { width: 23px; height: 23px; }
 .retro-selection { position: absolute; pointer-events: none; background: #e1f3ff29; border: 1px dotted #e6f5ff; z-index: 3; }
 .retro-windows { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 .retro-window {
@@ -60,6 +69,7 @@
   overflow: hidden;
 }
 .retro-window.is-active { background: #2368c3; border-color: #184695; }
+.retro-window:focus { outline: none; }
 .retro-window.is-maximized { inset: 0 !important; width: 100% !important; height: 100% !important; border-radius: 0; }
 .retro-titlebar {
   flex: none;
@@ -143,20 +153,35 @@
   background: linear-gradient(#5394e3, #3379cf);
 }
 .retro-task.is-active { background: #184e9a; box-shadow: inset 1px 1px 3px #0c3673; }
-.retro-clock { align-self: stretch; display: grid; place-items: center; min-width: 66px; padding: 0 11px; border-left: 1px solid #155699; background: linear-gradient(#59abe9, #288acb 35%, #2a88c7 85%, #17639f); color: #fff; }
+.retro-task span { overflow: hidden; text-overflow: ellipsis; }
+.retro-tray { align-self: stretch; display: flex; align-items: center; gap: 2px; padding: 0 6px; border-left: 1px solid #155699; box-shadow: inset 1px 0 #85c7f5; background: linear-gradient(#66b8f1, #2b93da 14%, #2684c6 58%, #2687c8 89%, #17639f); }
+.retro-tray-item, .retro-clock { display: grid; place-items: center; padding: 0; border: 1px solid transparent; color: #fff; background: transparent; }
+.retro-tray-item { width: 22px; height: 24px; }
+.retro-tray-item svg { width: 18px; height: 18px; }
+.retro-tray-item:hover, .retro-clock:hover { border-color: #c5e8fd70; border-radius: 2px; }
+.retro-clock { min-width: 49px; height: 24px; padding: 0 2px; }
 .retro-start-menu {
   position: absolute;
   left: 1px;
   bottom: var(--retro-taskbar);
-  width: min(250px, 100%);
+  width: min(368px, 100%);
+  max-height: calc(100% - var(--retro-taskbar));
+  overflow: auto;
   z-index: 5;
-  padding: 2px;
-  border: 1px solid #184b96;
-  border-radius: 7px 7px 2px 2px;
+  padding: 0 2px 2px;
+  border: 1px solid #174484;
+  border-radius: 9px 9px 2px 2px;
   box-shadow: 2px 3px 12px #1a375d8c;
-  background: #f9f8ef;
+  background: #2465ba;
 }
-.retro-menu-header { border-radius: 4px 4px 0 0; padding: 10px 11px; background: linear-gradient(#4087d9, #2465ba); color: white; font-weight: bold; text-shadow: 1px 1px #274d82; }
+.retro-menu-header { display: flex; gap: 9px; align-items: center; min-height: 63px; margin: 0 -2px; padding: 7px 9px; border-radius: 8px 8px 0 0; border-bottom: 2px solid #ec9b57; box-shadow: inset 0 2px #81b4f3; background: linear-gradient(#2666be, #458bdb 50%, #4d91df); color: white; font-size: 17px; font-weight: bold; text-shadow: 1px 1px #274d82; }
+.retro-user-avatar { display: grid; place-items: center; width: 47px; height: 47px; border: 2px solid #eef6ff; border-radius: 5px; box-shadow: 1px 2px 3px #0d4686; background: linear-gradient(140deg, #e7f2ff, #83afdc); }
+.retro-user-avatar svg { width: 34px; height: 34px; }
+.retro-menu-columns { display: grid; grid-template-columns: 1fr 1fr; }
+.retro-menu-programs, .retro-menu-places { min-width: 0; padding: 5px 3px 7px; }
+.retro-menu-programs { background: #fff; }
+.retro-menu-places { border-left: 1px solid #8db3dc; background: #d3e5fb; }
+.retro-menu-places .retro-menu-entry:nth-child(5) { margin-top: 4px; border-top: 1px solid #a4c4e9; }
 .retro-menu-entry, .retro-context button {
   display: flex;
   align-items: center;
@@ -170,11 +195,25 @@
   text-align: left;
 }
 .retro-menu-entry:hover, .retro-context button:hover, .retro-menu-entry:focus-visible, .retro-context button:focus-visible { background: #2868b9; color: #fff; }
-.retro-menu-footer { display: flex; justify-content: flex-end; gap: 6px; padding: 4px 5px; background: linear-gradient(#4c8bd7, #286ac0); }
-.retro-menu-footer button { padding: 2px 8px; border: 1px solid #aac9f4; border-radius: 2px; background: #eef4fc; color: #173c6c; }
+.retro-menu-entry { min-height: 35px; }
+.retro-menu-entry svg { width: 24px; height: 24px; }
+.retro-menu-footer { display: flex; justify-content: flex-end; gap: 7px; padding: 5px 5px 3px; background: linear-gradient(#4c8bd7, #286ac0); }
+.retro-menu-footer button { display: flex; align-items: center; gap: 5px; padding: 2px 4px; border: 1px solid transparent; border-radius: 2px; background: transparent; color: white; }
+.retro-menu-footer button:hover { border-color: #aac9f4; background: #1c5caa; }
+.retro-footer-icon { display: grid; place-items: center; width: 19px; height: 19px; border: 1px solid #f0e1c6; border-radius: 3px; background: linear-gradient(#a9c9ef, #4e84c7); font-size: 14px; line-height: 1; }
+.retro-menu-footer button:last-child .retro-footer-icon { background: linear-gradient(#f38f6a, #c94b2c); }
 .retro-context { position: absolute; min-width: 135px; z-index: 6; padding: 2px; border: 1px solid #8a96a4; box-shadow: 2px 2px 5px #2037536b; background: #fbfaf1; }
+.retro-context button { min-height: 23px; }
+.retro-context-divider { margin: 3px 2px; height: 1px; border: 0; background: #cecac1; }
+.retro-context-group { position: relative; }
+.retro-context-arrow { margin-left: auto; font-size: 8px; }
+.retro-context-submenu { display: none; top: -3px; left: 100%; }
+.retro-context-group:hover > .retro-context-submenu, .retro-context-group.is-expanded > .retro-context-submenu { display: block; }
+.retro-context.opens-left .retro-context-submenu { right: 100%; left: auto; }
+.retro-context.opens-up .retro-context-submenu { top: auto; bottom: -3px; }
 .retro-notices { position: absolute; z-index: 7; right: 10px; bottom: calc(var(--retro-taskbar) + 8px); display: grid; gap: 5px; max-width: min(280px, calc(100% - 20px)); }
-.retro-notice { padding: 8px 12px; border: 1px solid #a99d57; border-radius: 3px; background: #fffbd6; color: #2b3029; box-shadow: 2px 3px 8px #18335050; text-align: left; }
+.retro-notice { position: relative; padding: 8px 12px; border: 1px solid #a99d57; border-radius: 6px; background: #fffbd6; color: #2b3029; box-shadow: 2px 3px 8px #18335050; text-align: left; }
+.retro-notice:last-child::after { content: ''; position: absolute; right: 17px; bottom: -5px; width: 8px; height: 8px; border: solid #a99d57; border-width: 0 1px 1px 0; background: #fffbd6; transform: rotate(45deg); }
 .retro-dialog-shade { position: absolute; inset: 0; z-index: 8; display: grid; place-items: center; padding: 10px; }
 .retro-dialog { width: min(420px, 100%); padding: 2px; border: 1px solid #144b9c; border-radius: 7px 7px 3px 3px; background: #296bc3; box-shadow: 4px 7px 18px #071e3a6b; }
 .retro-dialog-body { display: flex; align-items: start; gap: 13px; padding: 18px 15px 10px; background: #f4f1e7; color: #18283e; }
@@ -183,3 +222,9 @@
 .retro-dialog-actions { display: flex; justify-content: flex-end; gap: 7px; padding: 10px 12px 12px; background: #f4f1e7; }
 .retro-dialog-actions button { min-width: 70px; padding: 4px 9px; border: 1px solid #6386b7; border-radius: 3px; background: linear-gradient(#fff, #efede4 75%, #e4dfcf); color: #18283e; }
 .retro-dialog-actions button:focus-visible { outline: 2px solid #2b6cb8; }
+.retro-display-panel { display: grid; gap: 12px; width: min(335px, 100%); margin: 0 auto; padding: 17px; }
+.retro-display-field { display: grid; grid-template-columns: 63px 1fr; align-items: center; }
+.retro-display-field select { min-width: 0; padding: 3px; font: inherit; }
+.retro-display-check { display: flex; align-items: center; gap: 5px; }
+.retro-display-actions { display: flex; justify-content: flex-end; gap: 5px; }
+.retro-display-actions button { min-width: 55px; padding: 3px 7px; border: 1px solid #6386b7; border-radius: 3px; background: linear-gradient(#fff, #efede4 75%, #e4dfcf); color: #18283e; }

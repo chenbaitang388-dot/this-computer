@@ -2,6 +2,7 @@ import argparse
 import functools
 import re
 import threading
+from contextlib import contextmanager
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -18,16 +19,23 @@ class QuietHandler(SimpleHTTPRequestHandler):
         pass
 
 
-def playthrough(page, url, screenshot):
+def playthrough(page, url, screenshot, route):
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
+    page.on("response", lambda response: errors.append(f"{response.status} {response.url}")
+            if response.status >= 400 and response.request.resource_type in {"script", "stylesheet", "image"}
+            else None)
 
     def boot():
         page.locator("#boot").click()
         page.wait_for_function("document.fullscreenElement === document.documentElement")
 
     def desktop_app(name):
-        page.locator(".retro-shortcut").filter(has_text=name).dblclick()
+        page.locator(".retro-shortcut").filter(has_text=re.compile(f"^{name}$")).dblclick()
+
+    def start_app(name):
+        page.locator(".retro-start").click()
+        page.locator(".retro-start-menu").get_by_role("button", name=name, exact=True).click()
 
     def file(file_id):
         page.locator(f".retro-window.is-active [data-file-id='{file_id}']").dblclick()
@@ -80,22 +88,64 @@ def playthrough(page, url, screenshot):
     desktop_app("此电脑")
     file("d")
     file("handover")
-    file("handover-current")
+    if route == "service":
+        desktop_app("搜索")
+        search = page.locator("#file-search")
+        search.fill("值班交接")
+        search.press("Enter")
+        page.locator("[data-search-id='handover-current']").click()
+    else:
+        file("handover-current")
     expect(page.locator(".retro-window.is-active textarea")).to_have_value(re.compile("今晚没有未完成的交接"))
 
     desktop_app("回收站")
     page.locator("[data-restore-id='handover-old']").click()
     page.locator("[data-open-restored='handover-old']").click()
     dismiss_dialog("当前桌面仍有人使用")
-    expect(page.locator(".retro-window.is-active textarea")).to_have_value(re.compile("0417"))
+    expect(page.get_by_role("textbox", name="值班交接（旧版）.txt", exact=True)).to_have_value(re.compile("0417"))
 
-    desktop_app("事件查看器")
+    if route == "service":
+        start_app("控制面板")
+        expect(page.locator('.retro-window[aria-label="控制面板"]')).to_be_visible()
+        desktop_app("本机消息")
+        log = page.locator("#messenger-log")
+        page.locator("[data-topic-id='identity']").click()
+        expect(log).to_contain_text("我是这台桌面的恢复服务")
+        page.locator("[data-topic-id='versions']").click()
+        desktop_app("搜索")
+        search = page.locator("#file-search")
+        search.fill("交接签名校验")
+        search.press("Enter")
+        page.locator(".retro-window.is-active [data-search-id]").click()
+        expect(page.get_by_role("textbox", name="交接签名校验.txt", exact=True)).to_be_visible()
+
+        start_app("运行")
+        page.locator("#run-command").fill("eventvwr")
+        page.locator("#run-submit").click()
+        expect(page.locator('.retro-window[aria-label="事件查看器"]')).to_be_visible()
+    else:
+        desktop_app("事件查看器")
     page.locator("[data-record-id='0417']").click()
     expect(page.locator(".retro-window.is-active")).to_contain_text("恢复来源：本机缓存")
 
-    desktop_app("网上邻居")
-    page.locator("#network-toggle").click()
-    dismiss_dialog("正在恢复：你")
+    if route == "network":
+        desktop_app("网上邻居")
+        page.locator("#network-toggle").click()
+        dismiss_dialog("正在恢复：你")
+    else:
+        desktop_app("任务管理器")
+        service_toggle = page.locator("#service-toggle")
+        expect(service_toggle).to_have_text("停止进程")
+        service_toggle.click()
+        dismiss_dialog("恢复提示：无")
+        expect(service_toggle).to_have_text("启动进程")
+        desktop_app("本机消息")
+        expect(page.locator("[data-topic-id='identity']")).to_be_disabled()
+        desktop_app("事件查看器")
+        page.locator("[data-record-id='0417']").click()
+        desktop_app("任务管理器")
+        service_toggle.click()
+        dismiss_dialog("恢复提示再次出现")
 
     desktop_app("交接记录")
     page.locator("#evidence-record").fill("0417")
@@ -103,6 +153,20 @@ def playthrough(page, url, screenshot):
     page.locator("#evidence-submit").click()
     result = page.locator("#evidence-result")
     expect(result).to_contain_text("交接记录已封存")
+
+    if route == "service":
+        assert save()["online"] is True
+        assert save()["story"]["controlled"] is True
+        desktop_app("本机消息")
+        page.locator("[data-topic-id='goodbye']").click()
+        expect(page.locator("#messenger-log")).to_contain_text("我在工作区留了一份回执")
+        desktop_app("搜索")
+        search = page.locator("#file-search")
+        search.fill("未发送的回复")
+        search.press("Enter")
+        page.locator(".retro-window.is-active [data-search-id]").click()
+        expect(page.locator(".retro-window.is-active textarea")).to_have_value(re.compile("收件人：上一个会话"))
+        desktop_app("交接记录")
 
     completed = save()
     assert completed, "The chapter should leave a save."
@@ -118,29 +182,48 @@ def playthrough(page, url, screenshot):
     assert not errors, errors
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--chrome", type=Path, default=CHROME)
-    parser.add_argument("--screenshot", type=Path)
-    args = parser.parse_args()
+@contextmanager
+def serve_project():
     handler = functools.partial(QuietHandler, directory=PROJECT)
     with ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
-        url = f"http://127.0.0.1:{server.server_port}/index.html"
         try:
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(executable_path=args.chrome)
-                try:
-                    page = browser.new_page(viewport={"width": 1365, "height": 900})
-                    page.set_default_timeout(5000)
-                    playthrough(page, url, args.screenshot)
-                finally:
-                    browser.close()
+            yield f"http://127.0.0.1:{server.server_port}/index.html"
         finally:
             server.shutdown()
             thread.join()
-    print("Browser playthrough passed")
+
+
+def verify_browser(args, url):
+    routes = ["network", "service"] if args.route == "all" else [args.route]
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(executable_path=args.chrome)
+        try:
+            for route in routes:
+                page = browser.new_page(viewport={"width": 1365, "height": 900})
+                try:
+                    page.set_default_timeout(5000)
+                    playthrough(page, url, args.screenshot if route == routes[0] else None, route)
+                    print(f"Browser playthrough passed ({route})")
+                finally:
+                    page.close()
+        finally:
+            browser.close()
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--chrome", type=Path, default=CHROME)
+    parser.add_argument("--screenshot", type=Path)
+    parser.add_argument("--url", help="Test a deployed URL instead of starting a local server.")
+    parser.add_argument("--route", choices=("all", "network", "service"), default="all")
+    args = parser.parse_args()
+    if args.url:
+        verify_browser(args, args.url)
+    else:
+        with serve_project() as url:
+            verify_browser(args, url)
 
 
 if __name__ == "__main__":

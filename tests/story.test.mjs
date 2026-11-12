@@ -39,3 +39,27 @@ test('supports going offline before opening the record and resumes saved progres
   assert.equal(resumed.submit(correct).ok, true);
   assert.equal(createStory(resumed.serialize()).status().complete, true);
 });
+
+test('accepts a stopped-and-restarted recovery service while the network stays connected', () => {
+  const story = createStory();
+  readHandover(story);
+  assert.match(story.talk('identity').text, /我是这台桌面的恢复服务/);
+  story.dispatch({ type: 'record-open', id: evidenceRecord });
+  assert.match(story.talk('identity').text, /执行账户是 SYSTEM/);
+  assert.match(story.dispatch({ type: 'service-toggle', running: false }).text, /恢复提示：无/);
+  assert.match(story.talk('identity').text, /消息未送达/);
+  assert.equal(story.submit(correct).ok, false);
+  assert.match(story.dispatch({ type: 'service-toggle', running: true }).text, /正在运行/);
+  assert.equal(story.status().controlled, false);
+  story.dispatch({ type: 'service-toggle', running: false });
+  story.dispatch({ type: 'record-open', id: evidenceRecord });
+
+  const resumed = createStory(story.serialize());
+  assert.match(resumed.dispatch({ type: 'service-toggle', running: true }).text, /恢复提示再次出现/);
+  assert.equal(resumed.status().offline, false);
+  assert.equal(resumed.status().controlled, true);
+  assert.match(resumed.talk('restart').text, /我只能信你/);
+  assert.match(resumed.submit(correct).text, /重启后 0417 再现/);
+  assert.equal(resumed.talk('goodbye').effect, 'write-draft');
+  assert.equal(createStory(resumed.serialize()).talk('goodbye').effect, undefined);
+});
