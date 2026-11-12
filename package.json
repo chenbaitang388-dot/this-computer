@@ -1,0 +1,1 @@
+{"name":"this-computer","private":true,"type":"module","scripts":{"test":"node --test"}}

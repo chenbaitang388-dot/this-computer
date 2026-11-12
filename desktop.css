@@ -1,0 +1,185 @@
+.retro-desktop {
+  --retro-taskbar: 35px;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+  font: 13px Tahoma, "Microsoft YaHei UI", sans-serif;
+  color: #16263b;
+  background: #517eba;
+}
+
+.retro-desktop *, .retro-desktop *::before, .retro-desktop *::after { box-sizing: border-box; }
+.retro-desktop [hidden] { display: none !important; }
+.retro-desktop button { font: inherit; }
+.retro-surface {
+  position: absolute;
+  inset: 0 0 var(--retro-taskbar);
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 78% 108%, #668e47 0 24%, transparent 24.3%),
+    radial-gradient(ellipse at 33% 136%, #587c3e 0 49%, transparent 49.2%),
+    radial-gradient(ellipse at 53% 162%, #324e3c 0 63%, transparent 63.2%),
+    radial-gradient(ellipse at 65% 28%, #accbe2 0, transparent 53%),
+    linear-gradient(160deg, #3f72aa 0%, #6897c0 44%, #a2bed1 73%, #9db9be 100%);
+}
+.retro-shortcuts { position: absolute; inset: 13px auto 9px 11px; display: flex; flex-flow: column wrap; align-content: flex-start; gap: 6px; }
+.retro-shortcut {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  width: 78px;
+  min-height: 62px;
+  padding: 4px 1px;
+  border: 1px solid transparent;
+  color: white;
+  background: transparent;
+  text-shadow: 1px 1px 2px #15385b, 0 1px 1px #111;
+  cursor: default;
+  user-select: none;
+}
+.retro-shortcut svg { width: 36px; height: 36px; filter: drop-shadow(1px 2px 2px #2435478a); }
+.retro-shortcut span { padding: 1px 4px; line-height: 17px; }
+.retro-shortcut.is-selected span, .retro-shortcut:focus-visible span { background: #0a55a7; }
+.retro-shortcut:focus-visible { outline: 1px dotted #fff; }
+.retro-selection { position: absolute; pointer-events: none; background: #e1f3ff29; border: 1px dotted #e6f5ff; z-index: 3; }
+.retro-windows { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.retro-window {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  padding: 2px;
+  border: 1px solid #1e4d95;
+  border-radius: 8px 8px 2px 2px;
+  background: #7493c3;
+  box-shadow: 2px 5px 12px #1e38555c;
+  pointer-events: auto;
+  overflow: hidden;
+}
+.retro-window.is-active { background: #2368c3; border-color: #184695; }
+.retro-window.is-maximized { inset: 0 !important; width: 100% !important; height: 100% !important; border-radius: 0; }
+.retro-titlebar {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 28px;
+  gap: 8px;
+  padding: 0 2px 1px 4px;
+  border-radius: 5px 5px 0 0;
+  background: linear-gradient(#9ab3db, #7c9cd0 18%, #668ac6 45%, #6589c4 79%, #6086bc);
+  color: white;
+  user-select: none;
+  touch-action: none;
+}
+.retro-window.is-active .retro-titlebar, .retro-dialog .retro-titlebar {
+  background: linear-gradient(#67a2f1, #3b83e1 17%, #215db8 45%, #286ecb 82%, #1352a5);
+}
+.retro-caption { display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 700; text-shadow: 1px 1px #214f94; }
+.retro-caption svg, .retro-task svg, .retro-menu-entry svg { width: 18px; height: 18px; flex: none; }
+.retro-window-controls { display: flex; gap: 3px; }
+.retro-window-controls button, .retro-titlebar > button {
+  width: 22px;
+  height: 21px;
+  padding: 0;
+  border: 1px solid #eff5fd;
+  border-radius: 3px;
+  background: linear-gradient(#6ca6f5, #1e66c9);
+  color: white;
+  font: bold 17px/17px Tahoma, sans-serif;
+  text-shadow: 1px 1px #315188;
+}
+.retro-window-controls button.retro-close, .retro-titlebar > button.retro-close { background: linear-gradient(#f89b7c, #b94028); }
+.retro-window-controls button:hover, .retro-titlebar > button:hover { filter: brightness(1.15); }
+.retro-window-body { flex: 1; min-width: 0; min-height: 0; overflow: auto; background: #f4f1e7; }
+.retro-resize { position: absolute; right: 0; bottom: 0; width: 15px; height: 15px; cursor: nwse-resize; touch-action: none; }
+.retro-resize::after { content: ''; position: absolute; right: 2px; bottom: 2px; width: 9px; height: 9px; background: repeating-linear-gradient(135deg, transparent 0 2px, #5c80b8 2px 3px, #e9f2ff 3px 4px); clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+.retro-window.is-maximized .retro-resize { display: none; }
+.retro-taskbar {
+  position: absolute;
+  inset: auto 0 0;
+  height: var(--retro-taskbar);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  background: linear-gradient(#6ba0e6, #4387dc 11%, #256ac2 35%, #2467be 85%, #1a4e94);
+  box-shadow: 0 -1px #d7e5fd40;
+}
+.retro-start {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 18px 0 12px;
+  color: white;
+  text-shadow: 1px 1px #315d2b;
+  border: 1px solid #39782c;
+  border-radius: 0 11px 11px 0;
+  background: linear-gradient(#a5cf80, #6daf48 22%, #4d8e3c 60%, #457634);
+  font-weight: 700 !important;
+}
+.retro-start:hover, .retro-start[aria-expanded="true"] { filter: brightness(1.14); }
+.retro-start-mark { display: grid; grid-template-columns: 7px 7px; grid-auto-rows: 7px; gap: 1px; transform: skewY(-8deg); }
+.retro-start-mark i:nth-child(1) { background: #fb845d; }
+.retro-start-mark i:nth-child(2) { background: #c3f470; }
+.retro-start-mark i:nth-child(3) { background: #87cefc; }
+.retro-start-mark i:nth-child(4) { background: #f5d267; }
+.retro-tasks { display: flex; flex: 1; min-width: 0; gap: 3px; align-items: center; padding: 0 5px; overflow: auto hidden; scrollbar-width: none; }
+.retro-task {
+  flex: 0 1 130px;
+  min-width: 80px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 5px;
+  color: white;
+  white-space: nowrap;
+  border: 1px solid #2864ac;
+  border-radius: 3px;
+  background: linear-gradient(#5394e3, #3379cf);
+}
+.retro-task.is-active { background: #184e9a; box-shadow: inset 1px 1px 3px #0c3673; }
+.retro-clock { align-self: stretch; display: grid; place-items: center; min-width: 66px; padding: 0 11px; border-left: 1px solid #155699; background: linear-gradient(#59abe9, #288acb 35%, #2a88c7 85%, #17639f); color: #fff; }
+.retro-start-menu {
+  position: absolute;
+  left: 1px;
+  bottom: var(--retro-taskbar);
+  width: min(250px, 100%);
+  z-index: 5;
+  padding: 2px;
+  border: 1px solid #184b96;
+  border-radius: 7px 7px 2px 2px;
+  box-shadow: 2px 3px 12px #1a375d8c;
+  background: #f9f8ef;
+}
+.retro-menu-header { border-radius: 4px 4px 0 0; padding: 10px 11px; background: linear-gradient(#4087d9, #2465ba); color: white; font-weight: bold; text-shadow: 1px 1px #274d82; }
+.retro-menu-entry, .retro-context button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 29px;
+  padding: 3px 9px;
+  border: 0;
+  background: transparent;
+  color: #172f4c;
+  text-align: left;
+}
+.retro-menu-entry:hover, .retro-context button:hover, .retro-menu-entry:focus-visible, .retro-context button:focus-visible { background: #2868b9; color: #fff; }
+.retro-menu-footer { display: flex; justify-content: flex-end; gap: 6px; padding: 4px 5px; background: linear-gradient(#4c8bd7, #286ac0); }
+.retro-menu-footer button { padding: 2px 8px; border: 1px solid #aac9f4; border-radius: 2px; background: #eef4fc; color: #173c6c; }
+.retro-context { position: absolute; min-width: 135px; z-index: 6; padding: 2px; border: 1px solid #8a96a4; box-shadow: 2px 2px 5px #2037536b; background: #fbfaf1; }
+.retro-notices { position: absolute; z-index: 7; right: 10px; bottom: calc(var(--retro-taskbar) + 8px); display: grid; gap: 5px; max-width: min(280px, calc(100% - 20px)); }
+.retro-notice { padding: 8px 12px; border: 1px solid #a99d57; border-radius: 3px; background: #fffbd6; color: #2b3029; box-shadow: 2px 3px 8px #18335050; text-align: left; }
+.retro-dialog-shade { position: absolute; inset: 0; z-index: 8; display: grid; place-items: center; padding: 10px; }
+.retro-dialog { width: min(420px, 100%); padding: 2px; border: 1px solid #144b9c; border-radius: 7px 7px 3px 3px; background: #296bc3; box-shadow: 4px 7px 18px #071e3a6b; }
+.retro-dialog-body { display: flex; align-items: start; gap: 13px; padding: 18px 15px 10px; background: #f4f1e7; color: #18283e; }
+.retro-dialog-message { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+.retro-warning { flex: none; display: grid; place-items: center; width: 33px; height: 30px; padding-top: 7px; clip-path: polygon(50% 0, 100% 100%, 0 100%); background: #f2be36; color: #432e0a; font: bold 19px Tahoma, sans-serif; }
+.retro-dialog-actions { display: flex; justify-content: flex-end; gap: 7px; padding: 10px 12px 12px; background: #f4f1e7; }
+.retro-dialog-actions button { min-width: 70px; padding: 4px 9px; border: 1px solid #6386b7; border-radius: 3px; background: linear-gradient(#fff, #efede4 75%, #e4dfcf); color: #18283e; }
+.retro-dialog-actions button:focus-visible { outline: 2px solid #2b6cb8; }

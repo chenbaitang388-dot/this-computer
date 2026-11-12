@@ -1,0 +1,26 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>此电脑 · 最后一次交接</title>
+<link rel="stylesheet" href="./desktop.css">
+<link rel="stylesheet" href="./game.css">
+<script type="module" src="./game.js"></script>
+</head>
+<body>
+<main id="desktop" hidden></main>
+<section id="startup" aria-labelledby="game-title">
+<div class="startup-panel">
+<p class="edition">工作站 04 / 本地会话</p>
+<h1 id="game-title">此电脑</h1>
+<p class="subtitle">最后一次交接</p>
+<p>请整理 D 盘，并提交撤场交接记录。</p>
+<button id="boot" type="button">开机</button>
+<button id="restart" type="button" hidden>清除存档</button>
+<p class="hint">建议使用键盘和鼠标 · Esc 可退出浏览器全屏</p>
+<p id="startup-error" role="alert"></p>
+</div>
+</section>
+</body>
+</html>
